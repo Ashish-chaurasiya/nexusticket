@@ -1,9 +1,13 @@
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { StatsCard } from "@/components/dashboard/StatsCard";
 import { AiChatPanel } from "@/components/ai/AiChatPanel";
 import { TicketCard } from "@/components/tickets/TicketCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
+import { useOrganization } from "@/contexts/OrganizationContext";
 import {
   Ticket,
   CheckCircle2,
@@ -13,9 +17,10 @@ import {
   Plus,
   Filter,
   ArrowRight,
+  Loader2,
 } from "lucide-react";
 
-// Mock data
+// Mock data - will be replaced with real data
 const recentTickets = [
   {
     key: "NXS-108",
@@ -54,6 +59,29 @@ const activityItems = [
 ];
 
 export default function Dashboard() {
+  const navigate = useNavigate();
+  const { user, isLoading: authLoading } = useAuth();
+  const { currentOrganization, isLoading: orgLoading } = useOrganization();
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate("/login");
+    }
+  }, [user, authLoading, navigate]);
+
+  if (authLoading || orgLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
+
   return (
     <DashboardLayout>
       <div className="p-6">
@@ -61,10 +89,12 @@ export default function Dashboard() {
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-foreground">
-              Good morning, Alex
+              Good morning{user.email ? `, ${user.email.split("@")[0]}` : ""}
             </h1>
             <p className="mt-1 text-muted-foreground">
-              Here's what's happening with your projects today.
+              {currentOrganization
+                ? `${currentOrganization.name} - Here's what's happening with your projects today.`
+                : "Here's what's happening with your projects today."}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -195,7 +225,9 @@ export default function Dashboard() {
       </div>
 
       {/* AI Chat Panel */}
-      <AiChatPanel />
+      <AiChatPanel 
+        organizationId={currentOrganization?.id}
+      />
     </DashboardLayout>
   );
 }

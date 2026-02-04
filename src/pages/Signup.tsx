@@ -1,6 +1,10 @@
-import { Link } from "react-router-dom";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Sparkles, ArrowLeft, CheckCircle2 } from "lucide-react";
+import { Sparkles, ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const benefits = [
   "Unlimited projects & tickets",
@@ -10,6 +14,103 @@ const benefits = [
 ];
 
 export default function Signup() {
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [company, setCompany] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const { signUp } = useAuth();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!firstName || !email || !password || !company) {
+      toast({
+        variant: "destructive",
+        title: "Missing fields",
+        description: "Please fill in all required fields.",
+      });
+      return;
+    }
+
+    if (password.length < 8) {
+      toast({
+        variant: "destructive",
+        title: "Password too short",
+        description: "Password must be at least 8 characters.",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const fullName = `${firstName} ${lastName}`.trim();
+      const { error } = await signUp(email, password, fullName);
+
+      if (error) {
+        throw error;
+      }
+
+      // Create organization for the user
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData.user) {
+        // Create organization
+        const slug = company
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/(^-|-$)/g, "");
+
+        const { data: orgData, error: orgError } = await supabase
+          .from("organizations")
+          .insert({
+            name: company,
+            slug: `${slug}-${Date.now().toString(36)}`,
+          })
+          .select()
+          .single();
+
+        if (orgError) {
+          console.error("Error creating organization:", orgError);
+        } else if (orgData) {
+          // Add user as admin of the organization
+          await supabase.from("organization_memberships").insert({
+            organization_id: orgData.id,
+            user_id: userData.user.id,
+            role: "admin",
+          });
+
+          // Create a default project
+          await supabase.from("projects").insert({
+            organization_id: orgData.id,
+            name: "My First Project",
+            key: "PROJ",
+            description: "Your first project - start adding tickets!",
+          });
+        }
+      }
+
+      toast({
+        title: "Account created!",
+        description: "Please check your email to verify your account.",
+      });
+
+      navigate("/login");
+    } catch (error) {
+      console.error("Signup error:", error);
+      toast({
+        variant: "destructive",
+        title: "Signup failed",
+        description: (error as Error).message || "An error occurred during signup.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen">
       {/* Left Panel - Visual */}
@@ -70,19 +171,22 @@ export default function Signup() {
           </p>
 
           {/* Form */}
-          <form className="mt-8 space-y-4">
+          <form onSubmit={handleSubmit} className="mt-8 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label
                   htmlFor="firstName"
                   className="mb-2 block text-sm font-medium text-foreground"
                 >
-                  First name
+                  First name *
                 </label>
                 <input
                   id="firstName"
                   type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
                   placeholder="Alex"
+                  required
                   className="w-full rounded-lg border border-border bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
@@ -96,6 +200,8 @@ export default function Signup() {
                 <input
                   id="lastName"
                   type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
                   placeholder="Johnson"
                   className="w-full rounded-lg border border-border bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
@@ -107,12 +213,15 @@ export default function Signup() {
                 htmlFor="company"
                 className="mb-2 block text-sm font-medium text-foreground"
               >
-                Company name
+                Company name *
               </label>
               <input
                 id="company"
                 type="text"
+                value={company}
+                onChange={(e) => setCompany(e.target.value)}
                 placeholder="Acme Corp"
+                required
                 className="w-full rounded-lg border border-border bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
@@ -122,12 +231,15 @@ export default function Signup() {
                 htmlFor="email"
                 className="mb-2 block text-sm font-medium text-foreground"
               >
-                Work email
+                Work email *
               </label>
               <input
                 id="email"
                 type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@company.com"
+                required
                 className="w-full rounded-lg border border-border bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
@@ -137,12 +249,16 @@ export default function Signup() {
                 htmlFor="password"
                 className="mb-2 block text-sm font-medium text-foreground"
               >
-                Password
+                Password *
               </label>
               <input
                 id="password"
                 type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
+                required
+                minLength={8}
                 className="w-full rounded-lg border border-border bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
               <p className="mt-1 text-xs text-muted-foreground">
@@ -150,11 +266,22 @@ export default function Signup() {
               </p>
             </div>
 
-            <Link to="/dashboard">
-              <Button variant="glow" className="mt-6 w-full" size="lg">
-                Create account
-              </Button>
-            </Link>
+            <Button
+              type="submit"
+              variant="glow"
+              className="mt-6 w-full"
+              size="lg"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating account...
+                </>
+              ) : (
+                "Create account"
+              )}
+            </Button>
           </form>
 
           <p className="mt-4 text-center text-xs text-muted-foreground">
