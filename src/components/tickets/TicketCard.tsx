@@ -1,14 +1,16 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { TicketType, TicketStatus, Priority } from "@/types";
+ import { TicketType, TicketPriority } from "@/types/domain";
 import { MessageSquare, Paperclip, AlertCircle, CheckCircle2, Circle, Clock, XCircle } from "lucide-react";
 
+ type UiStatus = "todo" | "in-progress" | "review" | "done" | "blocked";
+ 
 interface TicketCardProps {
   ticketKey: string;
   title: string;
   type: TicketType;
-  priority: Priority;
-  status: TicketStatus;
+   priority: TicketPriority;
+   status: UiStatus;
   assignee?: {
     name: string;
     avatarUrl?: string;

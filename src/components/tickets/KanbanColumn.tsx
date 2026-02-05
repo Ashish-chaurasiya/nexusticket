@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { TicketStatus } from "@/types";
+ import { TicketStatus } from "@/types/domain";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -9,17 +9,18 @@ interface KanbanColumnProps {
   title: string;
   count: number;
   children: ReactNode;
+   onAdd?: () => void;
 }
 
 const statusColors: Record<TicketStatus, string> = {
   todo: "bg-status-todo",
-  "in-progress": "bg-status-in-progress",
+   in_progress: "bg-status-in-progress",
   review: "bg-status-review",
   done: "bg-status-done",
   blocked: "bg-status-blocked",
 };
 
-export function KanbanColumn({ status, title, count, children }: KanbanColumnProps) {
+ export function KanbanColumn({ status, title, count, children, onAdd }: KanbanColumnProps) {
   return (
     <div className="flex h-full w-80 flex-shrink-0 flex-col rounded-lg bg-muted/30">
       {/* Header */}
@@ -31,7 +32,7 @@ export function KanbanColumn({ status, title, count, children }: KanbanColumnPro
             {count}
           </span>
         </div>
-        <Button variant="ghost" size="icon" className="h-6 w-6">
+         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onAdd}>
           <Plus className="h-3 w-3" />
         </Button>
       </div>
