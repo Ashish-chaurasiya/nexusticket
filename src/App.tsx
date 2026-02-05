@@ -10,6 +10,8 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
 import ProjectBoard from "./pages/ProjectBoard";
+ import TicketCreate from "./pages/TicketCreate";
+ import TicketDetail from "./pages/TicketDetail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,6 +31,8 @@ const App = () => (
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/projects" element={<ProjectBoard />} />
               <Route path="/projects/:projectId" element={<ProjectBoard />} />
+             <Route path="/projects/:projectId/tickets/new" element={<TicketCreate />} />
+             <Route path="/tickets/:ticketId" element={<TicketDetail />} />
               <Route path="/tickets" element={<Dashboard />} />
               <Route path="/team" element={<Dashboard />} />
               <Route path="/settings" element={<Dashboard />} />
