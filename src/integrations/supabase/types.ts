@@ -106,6 +106,111 @@ export type Database = {
           },
         ]
       }
+      org_ai_recommendations: {
+        Row: {
+          generated_at: string
+          id: string
+          organization_id: string
+          recommendations: Json
+        }
+        Insert: {
+          generated_at?: string
+          id?: string
+          organization_id: string
+          recommendations: Json
+        }
+        Update: {
+          generated_at?: string
+          id?: string
+          organization_id?: string
+          recommendations?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_ai_recommendations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      org_provisioning_steps: {
+        Row: {
+          created_at: string
+          id: string
+          organization_id: string
+          status: string
+          step: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organization_id: string
+          status?: string
+          step: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organization_id?: string
+          status?: string
+          step?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_provisioning_steps_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organization_invites: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          invited_by: string
+          organization_id: string
+          role: Database["public"]["Enums"]["organization_role"]
+          status: string
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          invited_by: string
+          organization_id: string
+          role?: Database["public"]["Enums"]["organization_role"]
+          status?: string
+          token?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          invited_by?: string
+          organization_id?: string
+          role?: Database["public"]["Enums"]["organization_role"]
+          status?: string
+          token?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_invites_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_memberships: {
         Row: {
           created_at: string
@@ -145,25 +250,31 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_demo: boolean | null
           logo_url: string | null
           name: string
           slug: string
+          template: string | null
           updated_at: string
         }
         Insert: {
           created_at?: string
           id?: string
+          is_demo?: boolean | null
           logo_url?: string | null
           name: string
           slug: string
+          template?: string | null
           updated_at?: string
         }
         Update: {
           created_at?: string
           id?: string
+          is_demo?: boolean | null
           logo_url?: string | null
           name?: string
           slug?: string
+          template?: string | null
           updated_at?: string
         }
         Relationships: []

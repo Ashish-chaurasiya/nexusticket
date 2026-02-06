@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sparkles, ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 
 const benefits = [
   "Unlimited projects & tickets",
@@ -16,18 +15,20 @@ const benefits = [
 export default function Signup() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { signUp } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const returnTo = searchParams.get("returnTo");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!firstName || !email || !password || !company) {
+    if (!firstName || !email || !password) {
       toast({
         variant: "destructive",
         title: "Missing fields",
@@ -55,50 +56,14 @@ export default function Signup() {
         throw error;
       }
 
-      // Create organization for the user
-      const { data: userData } = await supabase.auth.getUser();
-      if (userData.user) {
-        // Create organization
-        const slug = company
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/(^-|-$)/g, "");
-
-        const { data: orgData, error: orgError } = await supabase
-          .from("organizations")
-          .insert({
-            name: company,
-            slug: `${slug}-${Date.now().toString(36)}`,
-          })
-          .select()
-          .single();
-
-        if (orgError) {
-          console.error("Error creating organization:", orgError);
-        } else if (orgData) {
-          // Add user as admin of the organization
-          await supabase.from("organization_memberships").insert({
-            organization_id: orgData.id,
-            user_id: userData.user.id,
-            role: "admin",
-          });
-
-          // Create a default project
-          await supabase.from("projects").insert({
-            organization_id: orgData.id,
-            name: "My First Project",
-            key: "PROJ",
-            description: "Your first project - start adding tickets!",
-          });
-        }
-      }
-
       toast({
         title: "Account created!",
         description: "Please check your email to verify your account.",
       });
 
-      navigate("/login");
+      // If there's a return URL (e.g., from invite), redirect there after login
+      // Otherwise redirect to login
+      navigate(returnTo || "/login");
     } catch (error) {
       console.error("Signup error:", error);
       toast({
@@ -206,24 +171,6 @@ export default function Signup() {
                   className="w-full rounded-lg border border-border bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
-            </div>
-
-            <div>
-              <label
-                htmlFor="company"
-                className="mb-2 block text-sm font-medium text-foreground"
-              >
-                Company name *
-              </label>
-              <input
-                id="company"
-                type="text"
-                value={company}
-                onChange={(e) => setCompany(e.target.value)}
-                placeholder="Acme Corp"
-                required
-                className="w-full rounded-lg border border-border bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              />
             </div>
 
             <div>

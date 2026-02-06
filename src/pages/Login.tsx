@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sparkles, ArrowLeft, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,6 +12,9 @@ export default function Login() {
   const { signIn } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const returnTo = searchParams.get("returnTo");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +42,8 @@ export default function Login() {
         description: "You've successfully signed in.",
       });
 
-      navigate("/dashboard");
+      // Navigate to returnTo URL if provided, otherwise dashboard
+      navigate(returnTo || "/dashboard");
     } catch (error) {
       console.error("Login error:", error);
       toast({
