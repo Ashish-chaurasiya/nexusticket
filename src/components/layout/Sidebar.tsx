@@ -13,6 +13,9 @@ import {
   Bell,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { useProjects } from "@/hooks/useProjects";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -21,14 +24,20 @@ const navigation = [
   { name: "Team", href: "/team", icon: Users },
 ];
 
-const projects = [
-  { name: "Nexus Core", key: "NXS", color: "bg-primary" },
-  { name: "Mobile App", key: "MOB", color: "bg-ticket-story" },
-  { name: "API Gateway", key: "API", color: "bg-ticket-support" },
+// Project color palette
+const projectColors = [
+  "bg-primary",
+  "bg-ticket-story",
+  "bg-ticket-support",
+  "bg-ticket-bug",
+  "bg-status-done",
 ];
 
 export function Sidebar() {
   const location = useLocation();
+  const { currentOrganization, currentRole } = useOrganization();
+  const { profile } = useAuth();
+  const { data: projects = [] } = useProjects();
 
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-border bg-sidebar">
@@ -40,7 +49,9 @@ export function Sidebar() {
           </div>
           <div className="flex flex-col">
             <span className="text-sm font-semibold text-foreground">Nexus</span>
-            <span className="text-xs text-muted-foreground">Acme Corp</span>
+            <span className="text-xs text-muted-foreground truncate max-w-28">
+              {currentOrganization?.name || "No organization"}
+            </span>
           </div>
         </div>
         <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -101,19 +112,25 @@ export function Sidebar() {
             </Button>
           </div>
           <div className="space-y-1">
-            {projects.map((project) => (
-              <Link
-                key={project.key}
-                to={`/projects/${project.key.toLowerCase()}`}
-                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
-              >
-                <div className={cn("h-2 w-2 rounded-full", project.color)} />
-                <span className="flex-1 truncate">{project.name}</span>
-                <span className="text-xs text-muted-foreground">
-                  {project.key}
-                </span>
-              </Link>
-            ))}
+            {projects.length > 0 ? (
+              projects.map((project, index) => (
+                <Link
+                  key={project.id}
+                  to={`/projects/${project.id}`}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+                >
+                  <div className={cn("h-2 w-2 rounded-full", projectColors[index % projectColors.length])} />
+                  <span className="flex-1 truncate">{project.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {project.key}
+                  </span>
+                </Link>
+              ))
+            ) : (
+              <p className="px-3 text-xs text-muted-foreground">
+                No projects yet
+              </p>
+            )}
           </div>
         </div>
       </nav>
@@ -141,8 +158,12 @@ export function Sidebar() {
         <div className="mt-2 flex items-center gap-3 rounded-lg px-3 py-2">
           <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-ticket-story" />
           <div className="flex-1">
-            <p className="text-sm font-medium text-foreground">Alex Johnson</p>
-            <p className="text-xs text-muted-foreground">Admin</p>
+            <p className="text-sm font-medium text-foreground truncate">
+              {profile?.full_name || "User"}
+            </p>
+            <p className="text-xs text-muted-foreground capitalize">
+              {currentRole || "Member"}
+            </p>
           </div>
         </div>
       </div>
