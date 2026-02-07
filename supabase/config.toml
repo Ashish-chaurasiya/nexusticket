@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.create-organization-bootstrap]
 verify_jwt = false
+
+[functions.send-invite-email]
+verify_jwt = false
