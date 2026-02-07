@@ -15,6 +15,7 @@ import TicketCreate from "./pages/TicketCreate";
 import TicketDetail from "./pages/TicketDetail";
 import CreateOrganization from "./pages/onboarding/CreateOrganization";
 import AcceptInvite from "./pages/onboarding/AcceptInvite";
+import Team from "./pages/Team";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,7 +41,7 @@ const App = () => (
                 <Route path="/projects/:projectId/tickets/new" element={<TicketCreate />} />
                 <Route path="/tickets/:ticketId" element={<TicketDetail />} />
                 <Route path="/tickets" element={<Dashboard />} />
-                <Route path="/team" element={<Dashboard />} />
+                <Route path="/team" element={<Team />} />
                 <Route path="/settings" element={<Dashboard />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />

@@ -240,15 +240,37 @@ serve(async (req) => {
         }));
 
       if (invitesToInsert.length > 0) {
-        const { error: invitesError } = await supabase
+        const { data: insertedInvites, error: invitesError } = await supabase
           .from("organization_invites")
-          .insert(invitesToInsert);
+          .insert(invitesToInsert)
+          .select("id, email, role, token");
 
         if (invitesError) {
           console.error("Invites error:", invitesError);
           // Non-blocking
-        } else {
-          await logStep(supabase, org.id, `${invitesToInsert.length} invite(s) sent`);
+        } else if (insertedInvites) {
+          // Send invite emails via edge function
+          for (const invite of insertedInvites) {
+            try {
+              await fetch(`${supabaseUrl}/functions/v1/send-invite-email`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${supabaseServiceKey}`,
+                },
+                body: JSON.stringify({
+                  inviteId: invite.id,
+                  email: invite.email,
+                  organizationName: name,
+                  role: invite.role,
+                  token: invite.token,
+                }),
+              });
+            } catch (emailErr) {
+              console.error("Failed to send invite email:", emailErr);
+            }
+          }
+          await logStep(supabase, org.id, `${insertedInvites.length} invite(s) sent`);
         }
       }
     }
