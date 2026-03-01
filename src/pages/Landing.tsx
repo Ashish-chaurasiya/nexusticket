@@ -381,7 +381,7 @@ export default function Landing() {
               </a>
             </div>
             <p className="text-sm text-muted-foreground">
-              © 2024 Nexus. All rights reserved.
+              © 2025 Nexus. All rights reserved.
             </p>
           </div>
         </div>

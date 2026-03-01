@@ -6,8 +6,11 @@ import { AiChatPanel } from "@/components/ai/AiChatPanel";
 import { TicketCard } from "@/components/tickets/TicketCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/contexts/OrganizationContext";
+import { useDashboardStats } from "@/hooks/useDashboardStats";
+import { formatDistanceToNow } from "date-fns";
 import {
   Ticket,
   CheckCircle2,
@@ -20,50 +23,12 @@ import {
   Loader2,
 } from "lucide-react";
 
-// Mock data - will be replaced with real data
-const recentTickets = [
-  {
-    key: "NXS-108",
-    title: "Dashboard loading performance optimization",
-    type: "task" as const,
-    priority: "high" as const,
-    status: "in-progress" as const,
-    assignee: { name: "Sarah Chen" },
-    commentCount: 3,
-  },
-  {
-    key: "NXS-107",
-    title: "Fix file upload timeout on large files",
-    type: "bug" as const,
-    priority: "critical" as const,
-    status: "todo" as const,
-    commentCount: 5,
-    attachmentCount: 2,
-  },
-  {
-    key: "NXS-106",
-    title: "Implement dark mode toggle",
-    type: "story" as const,
-    priority: "medium" as const,
-    status: "review" as const,
-    assignee: { name: "Mike Ross" },
-    labels: ["ui", "feature"],
-  },
-];
-
-const activityItems = [
-  { user: "Sarah Chen", action: "completed", ticket: "NXS-105", time: "2m ago" },
-  { user: "Mike Ross", action: "commented on", ticket: "NXS-103", time: "15m ago" },
-  { user: "You", action: "created", ticket: "NXS-108", time: "1h ago" },
-  { user: "AI Assistant", action: "triaged", ticket: "NXS-107", time: "2h ago" },
-];
-
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user, isLoading: authLoading } = useAuth();
   const { currentOrganization, isLoading: orgLoading } = useOrganization();
+  const { stats, recentTickets, activity, sprint, isLoading: dataLoading } = useDashboardStats();
 
-  // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
       navigate("/login");
@@ -81,6 +46,12 @@ export default function Dashboard() {
   if (!user) {
     return null;
   }
+
+  const sprintProgress = sprint
+    ? sprint.totalTickets > 0
+      ? Math.round((sprint.completedTickets / sprint.totalTickets) * 100)
+      : 0
+    : 0;
 
   return (
     <DashboardLayout>
@@ -102,7 +73,7 @@ export default function Dashboard() {
               <Filter className="h-4 w-4" />
               Filter
             </Button>
-            <Button variant="glow" className="gap-2">
+            <Button variant="glow" className="gap-2" onClick={() => navigate("/tickets/new")}>
               <Plus className="h-4 w-4" />
               New Ticket
             </Button>
@@ -111,29 +82,36 @@ export default function Dashboard() {
 
         {/* Stats Grid */}
         <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatsCard
-            title="Total Tickets"
-            value={128}
-            change={{ value: 12, positive: true }}
-            icon={<Ticket className="h-5 w-5" />}
-          />
-          <StatsCard
-            title="Completed"
-            value={47}
-            change={{ value: 8, positive: true }}
-            icon={<CheckCircle2 className="h-5 w-5" />}
-          />
-          <StatsCard
-            title="In Progress"
-            value={23}
-            icon={<Clock className="h-5 w-5" />}
-          />
-          <StatsCard
-            title="Critical Issues"
-            value={5}
-            change={{ value: 2, positive: false }}
-            icon={<AlertCircle className="h-5 w-5" />}
-          />
+          {dataLoading ? (
+            <>
+              {[1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-28 rounded-lg" />
+              ))}
+            </>
+          ) : (
+            <>
+              <StatsCard
+                title="Total Tickets"
+                value={stats?.totalTickets ?? 0}
+                icon={<Ticket className="h-5 w-5" />}
+              />
+              <StatsCard
+                title="Completed"
+                value={stats?.completed ?? 0}
+                icon={<CheckCircle2 className="h-5 w-5" />}
+              />
+              <StatsCard
+                title="In Progress"
+                value={stats?.inProgress ?? 0}
+                icon={<Clock className="h-5 w-5" />}
+              />
+              <StatsCard
+                title="Critical Issues"
+                value={stats?.critical ?? 0}
+                icon={<AlertCircle className="h-5 w-5" />}
+              />
+            </>
+          )}
         </div>
 
         {/* Main Content Grid */}
@@ -149,9 +127,26 @@ export default function Dashboard() {
                 </Button>
               </div>
               <div className="space-y-4 p-4">
-                {recentTickets.map((ticket) => (
-                  <TicketCard key={ticket.key} ticketKey={ticket.key} {...ticket} />
-                ))}
+                {dataLoading ? (
+                  [1, 2, 3].map((i) => <Skeleton key={i} className="h-20 rounded-lg" />)
+                ) : recentTickets && recentTickets.length > 0 ? (
+                  recentTickets.map((ticket) => (
+                    <TicketCard
+                      key={ticket.id}
+                      ticketKey={ticket.key}
+                      title={ticket.title}
+                      type={ticket.type}
+                      priority={ticket.priority}
+                      status={ticket.status === "in_progress" ? "in-progress" : ticket.status as any}
+                      labels={ticket.labels || undefined}
+                      onClick={() => navigate(`/tickets/${ticket.id}`)}
+                    />
+                  ))
+                ) : (
+                  <p className="py-8 text-center text-sm text-muted-foreground">
+                    No tickets yet. Create your first ticket to get started.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -167,10 +162,20 @@ export default function Dashboard() {
                 <h3 className="font-medium text-foreground">AI Insights</h3>
               </div>
               <p className="text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">3 tickets</span> are
-                at risk of missing their SLA. Consider prioritizing{" "}
-                <span className="font-medium text-primary">NXS-107</span> which has
-                been in backlog for 5 days.
+                {stats && stats.critical > 0 ? (
+                  <>
+                    <span className="font-medium text-foreground">{stats.critical} critical ticket{stats.critical !== 1 ? "s" : ""}</span>{" "}
+                    need attention. Consider reviewing and prioritizing them.
+                  </>
+                ) : stats && stats.totalTickets > 0 ? (
+                  <>
+                    <span className="font-medium text-foreground">{stats.completed}</span> of{" "}
+                    <span className="font-medium text-foreground">{stats.totalTickets}</span> tickets completed.
+                    {stats.inProgress > 0 && <> {stats.inProgress} in progress.</>}
+                  </>
+                ) : (
+                  "Create tickets and let AI help you prioritize and manage your work."
+                )}
               </p>
               <Button variant="subtle" className="mt-3 w-full">
                 View AI recommendations
@@ -183,23 +188,33 @@ export default function Dashboard() {
                 <h2 className="font-medium text-foreground">Activity</h2>
               </div>
               <div className="divide-y divide-border">
-                {activityItems.map((item, index) => (
-                  <div key={index} className="flex items-start gap-3 p-4">
-                    <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/60 to-ticket-story/60" />
-                    <div className="flex-1 text-sm">
-                      <p className="text-foreground">
-                        <span className="font-medium">{item.user}</span>{" "}
-                        <span className="text-muted-foreground">
-                          {item.action}
-                        </span>{" "}
-                        <span className="font-medium text-primary">
-                          {item.ticket}
-                        </span>
-                      </p>
-                      <p className="text-xs text-muted-foreground">{item.time}</p>
+                {dataLoading ? (
+                  [1, 2, 3].map((i) => (
+                    <div key={i} className="p-4">
+                      <Skeleton className="h-10 rounded" />
                     </div>
-                  </div>
-                ))}
+                  ))
+                ) : activity && activity.length > 0 ? (
+                  activity.map((item) => (
+                    <div key={item.id} className="flex items-start gap-3 p-4">
+                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/60 to-ticket-story/60" />
+                      <div className="flex-1 text-sm">
+                        <p className="text-foreground">
+                          <span className="font-medium">
+                            {item.is_ai_action ? "AI Assistant" : "User"}
+                          </span>{" "}
+                          <span className="text-muted-foreground">{item.action}</span>{" "}
+                          <span className="font-medium text-primary">{item.entity_type}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="p-4 text-center text-sm text-muted-foreground">No recent activity</p>
+                )}
               </div>
             </div>
 
@@ -207,17 +222,21 @@ export default function Dashboard() {
             <div className="rounded-lg border border-border bg-card p-4">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="font-medium text-foreground">Sprint Progress</h3>
-                <Badge variant="in-progress">Week 2 of 3</Badge>
+                {sprint ? (
+                  <Badge variant="in-progress">{sprint.name}</Badge>
+                ) : (
+                  <Badge variant="outline">No active sprint</Badge>
+                )}
               </div>
               <div className="mb-2 h-2 overflow-hidden rounded-full bg-muted">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-primary to-status-done"
-                  style={{ width: "68%" }}
+                  className="h-full rounded-full bg-gradient-to-r from-primary to-status-done transition-all"
+                  style={{ width: `${sprintProgress}%` }}
                 />
               </div>
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>23 completed</span>
-                <span>11 remaining</span>
+                <span>{sprint?.completedTickets ?? 0} completed</span>
+                <span>{sprint ? sprint.totalTickets - sprint.completedTickets : 0} remaining</span>
               </div>
             </div>
           </div>
@@ -225,9 +244,7 @@ export default function Dashboard() {
       </div>
 
       {/* AI Chat Panel */}
-      <AiChatPanel 
-        organizationId={currentOrganization?.id}
-      />
+      <AiChatPanel organizationId={currentOrganization?.id} />
     </DashboardLayout>
   );
 }
