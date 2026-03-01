@@ -26,7 +26,6 @@ interface ChatRequest {
   };
 }
 
-// System prompts for different AI actions
 const SYSTEM_PROMPTS: Record<ActionType, string> = {
   create_ticket: `You are Nexus AI, an intelligent ticket creation assistant. Your role is to help users create well-structured tickets through conversation.
 
@@ -91,7 +90,6 @@ You can help with:
 Be helpful, concise, and proactive in suggesting actions.`
 };
 
-// Tool definitions for structured output
 const TOOLS = {
   create_ticket: {
     type: "function",
@@ -134,18 +132,75 @@ const TOOLS = {
   }
 };
 
+const VALID_ACTIONS: ActionType[] = ["create_ticket", "triage_ticket", "analyze_project", "summarize_sprint", "general_chat"];
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    // Authenticate user
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    const { messages, action = "general_chat", context }: ChatRequest = await req.json();
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claims, error: claimsError } = await supabase.auth.getClaims(token);
+    if (claimsError || !claims?.claims) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      console.error("LOVABLE_API_KEY is not configured");
+      return new Response(
+        JSON.stringify({ error: "AI service is not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const body = await req.json();
+
+    // Input validation
+    const messages = body.messages;
+    if (!Array.isArray(messages) || messages.length === 0 || messages.length > 50) {
+      return new Response(
+        JSON.stringify({ error: "Invalid messages: must be an array of 1-50 messages" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    for (const msg of messages) {
+      if (!msg.role || !["user", "assistant"].includes(msg.role)) {
+        return new Response(
+          JSON.stringify({ error: "Invalid message role" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (typeof msg.content !== "string" || msg.content.length > 10000) {
+        return new Response(
+          JSON.stringify({ error: "Invalid message content" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    const action: ActionType = VALID_ACTIONS.includes(body.action) ? body.action : "general_chat";
+    const context = body.context;
 
     // Build the request to AI gateway
     const systemPrompt = SYSTEM_PROMPTS[action];
@@ -203,9 +258,11 @@ serve(async (req) => {
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error(`AI gateway error: ${response.status}`);
+      console.error("AI gateway error:", response.status);
+      return new Response(
+        JSON.stringify({ error: "AI service temporarily unavailable" }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     return new Response(response.body, {
@@ -214,7 +271,7 @@ serve(async (req) => {
   } catch (error) {
     console.error("AI chat error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ error: "An unexpected error occurred" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

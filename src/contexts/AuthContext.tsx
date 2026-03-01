@@ -37,45 +37,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Check and auto-accept pending invites for a user
-  const checkAndAcceptPendingInvites = async (userId: string, email: string) => {
+  // Auto-accept pending invites via server-side RPC
+  const checkAndAcceptPendingInvites = async () => {
     try {
-      // Find pending invites for this email
-      const { data: pendingInvites, error } = await supabase
-        .from("organization_invites")
-        .select("id, organization_id, role, token")
-        .eq("email", email.toLowerCase())
-        .eq("status", "pending");
-
-      if (error || !pendingInvites?.length) return;
-
-      // Auto-accept each pending invite
-      for (const invite of pendingInvites) {
-        // Check if already a member
-        const { data: existingMembership } = await supabase
-          .from("organization_memberships")
-          .select("id")
-          .eq("organization_id", invite.organization_id)
-          .eq("user_id", userId)
-          .single();
-
-        if (!existingMembership) {
-          // Create membership
-          await supabase.from("organization_memberships").insert({
-            organization_id: invite.organization_id,
-            user_id: userId,
-            role: invite.role,
-          });
-        }
-
-        // Mark invite as accepted
-        await supabase
-          .from("organization_invites")
-          .update({ status: "accepted" })
-          .eq("id", invite.id);
+      const { error } = await supabase.rpc("accept_pending_invites_for_user");
+      if (error) {
+        console.error("Error auto-accepting invites:", error);
       }
-
-      console.log(`Auto-accepted ${pendingInvites.length} pending invite(s)`);
     } catch (err) {
       console.error("Error checking pending invites:", err);
     }
@@ -92,9 +60,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Defer profile fetch to avoid blocking
           setTimeout(() => fetchProfile(session.user.id), 0);
 
-          // Auto-accept pending invites on sign in
-          if (event === "SIGNED_IN" && session.user.email) {
-            setTimeout(() => checkAndAcceptPendingInvites(session.user.id, session.user.email!), 100);
+          // Auto-accept pending invites on sign in via server-side RPC
+          if (event === "SIGNED_IN") {
+            setTimeout(() => checkAndAcceptPendingInvites(), 100);
           }
         } else {
           setProfile(null);

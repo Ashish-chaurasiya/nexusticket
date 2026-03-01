@@ -6,13 +6,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-interface BootstrapRequest {
-  name: string;
-  template?: "startup" | "enterprise";
-  isDemo?: boolean;
-  invites?: Array<{ email: string; role: "admin" | "manager" | "member" }>;
-}
-
 interface DemoTicket {
   title: string;
   description: string;
@@ -33,7 +26,7 @@ const DEMO_TICKETS: DemoTicket[] = [
   },
   {
     title: "Set up CI/CD pipeline",
-    description: "Configure GitHub Actions workflow for automated testing and deployment. Should include:\n- Unit test runner\n- Build verification\n- Staging deployment\n- Production deployment approval",
+    description: "Configure GitHub Actions workflow for automated testing and deployment.",
     type: "task",
     priority: "medium",
     status: "in_progress",
@@ -41,7 +34,7 @@ const DEMO_TICKETS: DemoTicket[] = [
   },
   {
     title: "Design user onboarding flow",
-    description: "Create a seamless first-time user experience that guides users through:\n1. Account setup\n2. Team creation\n3. First project setup\n4. Tutorial walkthrough",
+    description: "Create a seamless first-time user experience.",
     type: "story",
     priority: "medium",
     status: "review",
@@ -49,7 +42,7 @@ const DEMO_TICKETS: DemoTicket[] = [
   },
   {
     title: "Dashboard loading performance",
-    description: "The main dashboard takes 3+ seconds to load. Need to investigate and optimize:\n- API response times\n- Bundle size\n- Lazy loading opportunities",
+    description: "The main dashboard takes 3+ seconds to load. Need to investigate and optimize.",
     type: "bug",
     priority: "low",
     status: "todo",
@@ -70,6 +63,8 @@ async function logStep(
   });
 }
 
+const VALID_TEMPLATES = ["startup", "enterprise"];
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -83,23 +78,37 @@ serve(async (req) => {
 
     // Get the user from the auth header
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      throw new Error("Missing authorization header");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     
     if (userError || !user) {
-      throw new Error("Unauthorized");
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    const body: BootstrapRequest = await req.json();
-    const { name, template = "startup", isDemo = true, invites = [] } = body;
+    const body = await req.json();
 
-    if (!name || name.trim().length === 0) {
-      throw new Error("Organization name is required");
+    // Input validation
+    const name = body.name;
+    if (!name || typeof name !== "string" || name.trim().length === 0 || name.trim().length > 100) {
+      return new Response(
+        JSON.stringify({ error: "Organization name is required and must be under 100 characters" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
+
+    const template = VALID_TEMPLATES.includes(body.template) ? body.template : "startup";
+    const isDemo = body.isDemo !== false; // default true
+    const invites = Array.isArray(body.invites) ? body.invites.slice(0, 20) : []; // Limit invites
 
     // Generate slug from name
     const slug = name
@@ -122,7 +131,10 @@ serve(async (req) => {
 
     if (orgError) {
       console.error("Org creation error:", orgError);
-      throw new Error(`Failed to create organization: ${orgError.message}`);
+      return new Response(
+        JSON.stringify({ error: "Failed to create organization" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     await logStep(supabase, org.id, "Organization created");
@@ -138,7 +150,10 @@ serve(async (req) => {
 
     if (membershipError) {
       console.error("Membership error:", membershipError);
-      throw new Error(`Failed to create membership: ${membershipError.message}`);
+      return new Response(
+        JSON.stringify({ error: "Failed to set up organization membership" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     await logStep(supabase, org.id, "Admin role assigned");
@@ -161,7 +176,10 @@ serve(async (req) => {
 
     if (projectError) {
       console.error("Project error:", projectError);
-      throw new Error(`Failed to create project: ${projectError.message}`);
+      return new Response(
+        JSON.stringify({ error: "Failed to create default project" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     await logStep(supabase, org.id, "Default project created");
@@ -187,7 +205,10 @@ serve(async (req) => {
 
     if (sprintError) {
       console.error("Sprint error:", sprintError);
-      throw new Error(`Failed to create sprint: ${sprintError.message}`);
+      return new Response(
+        JSON.stringify({ error: "Failed to create default sprint" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     await logStep(supabase, org.id, "Sprint activated");
@@ -209,7 +230,6 @@ serve(async (req) => {
         key: `${projectKey}-${index + 1}`,
       }));
 
-      // Update project counter
       await supabase
         .from("projects")
         .update({ ticket_counter: DEMO_TICKETS.length })
@@ -221,7 +241,6 @@ serve(async (req) => {
 
       if (ticketsError) {
         console.error("Tickets error:", ticketsError);
-        // Non-blocking - continue even if demo tickets fail
       } else {
         await logStep(supabase, org.id, "Demo tickets created");
       }
@@ -230,11 +249,12 @@ serve(async (req) => {
     // 6️⃣ Process Invites
     if (invites.length > 0) {
       const invitesToInsert = invites
-        .filter((inv) => inv.email && inv.email.includes("@"))
-        .map((inv) => ({
+        .filter((inv: { email?: string; role?: string }) => inv.email && typeof inv.email === "string" && inv.email.includes("@") && inv.email.length <= 255)
+        .slice(0, 20)
+        .map((inv: { email: string; role?: string }) => ({
           organization_id: org.id,
           email: inv.email.toLowerCase().trim(),
-          role: inv.role || "member",
+          role: ["admin", "manager", "member"].includes(inv.role || "") ? inv.role : "member",
           invited_by: user.id,
           status: "pending",
         }));
@@ -247,9 +267,7 @@ serve(async (req) => {
 
         if (invitesError) {
           console.error("Invites error:", invitesError);
-          // Non-blocking
         } else if (insertedInvites) {
-          // Send invite emails via edge function
           for (const invite of insertedInvites) {
             try {
               await fetch(`${supabaseUrl}/functions/v1/send-invite-email`, {
@@ -261,7 +279,7 @@ serve(async (req) => {
                 body: JSON.stringify({
                   inviteId: invite.id,
                   email: invite.email,
-                  organizationName: name,
+                  organizationName: name.trim(),
                   role: invite.role,
                   token: invite.token,
                 }),
@@ -305,10 +323,7 @@ serve(async (req) => {
   } catch (error) {
     console.error("Bootstrap error:", error);
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      }),
+      JSON.stringify({ error: "Failed to create organization" }),
       {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
