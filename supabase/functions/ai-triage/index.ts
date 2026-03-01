@@ -7,18 +7,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-interface TriageRequest {
-  ticketId?: string;
-  title: string;
-  description: string;
-  type: string;
-  projectContext?: {
-    projectId: string;
-    projectName: string;
-    teamMembers?: Array<{ id: string; name: string; role: string }>;
-  };
-}
-
 interface TriageResult {
   suggestedPriority: "critical" | "high" | "medium" | "low";
   priorityReasoning: string;
@@ -106,18 +94,77 @@ const TRIAGE_TOOL = {
   }
 };
 
+const VALID_TYPES = ["bug", "task", "story", "support"];
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    // Authenticate user
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    const { ticketId, title, description, type, projectContext }: TriageRequest = await req.json();
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claims, error: claimsError } = await supabase.auth.getClaims(token);
+    if (claimsError || !claims?.claims) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      console.error("LOVABLE_API_KEY is not configured");
+      return new Response(
+        JSON.stringify({ error: "AI service is not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const body = await req.json();
+
+    // Input validation
+    const title = body.title;
+    const description = body.description;
+    const type = body.type;
+
+    if (!title || typeof title !== "string" || title.length > 500) {
+      return new Response(
+        JSON.stringify({ error: "Title is required and must be under 500 characters" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!description || typeof description !== "string" || description.length > 10000) {
+      return new Response(
+        JSON.stringify({ error: "Description is required and must be under 10000 characters" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!type || !VALID_TYPES.includes(type)) {
+      return new Response(
+        JSON.stringify({ error: "Type must be one of: " + VALID_TYPES.join(", ") }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const ticketId = body.ticketId;
+    const projectContext = body.projectContext;
 
     // Build context message
     let userMessage = `Analyze and triage this ${type} ticket:
@@ -128,9 +175,9 @@ Description:
 ${description}`;
 
     if (projectContext) {
-      userMessage += `\n\nProject: ${projectContext.projectName}`;
-      if (projectContext.teamMembers && projectContext.teamMembers.length > 0) {
-        userMessage += `\nTeam Members: ${projectContext.teamMembers.map(m => `${m.name} (${m.role})`).join(", ")}`;
+      userMessage += `\n\nProject: ${String(projectContext.projectName || "").substring(0, 200)}`;
+      if (projectContext.teamMembers && Array.isArray(projectContext.teamMembers) && projectContext.teamMembers.length > 0) {
+        userMessage += `\nTeam Members: ${projectContext.teamMembers.slice(0, 20).map((m: { name?: string; role?: string }) => `${String(m.name || "").substring(0, 100)} (${String(m.role || "").substring(0, 50)})`).join(", ")}`;
       }
     }
 
@@ -164,9 +211,11 @@ ${description}`;
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error(`AI gateway error: ${response.status}`);
+      console.error("AI gateway error:", response.status);
+      return new Response(
+        JSON.stringify({ error: "AI service temporarily unavailable" }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const data = await response.json();
@@ -197,7 +246,7 @@ ${description}`;
   } catch (error) {
     console.error("AI triage error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ error: "An unexpected error occurred" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

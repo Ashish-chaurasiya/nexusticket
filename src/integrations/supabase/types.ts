@@ -529,6 +529,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_pending_invites_for_user: { Args: never; Returns: undefined }
       get_user_role_in_org: {
         Args: { org_id: string; uid: string }
         Returns: Database["public"]["Enums"]["organization_role"]

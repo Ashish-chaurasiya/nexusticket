@@ -77,7 +77,6 @@ interface Invite {
   role: OrganizationRole;
   status: string;
   created_at: string;
-  token: string;
 }
 
 const roleIcons: Record<OrganizationRole, typeof Shield> = {
@@ -150,7 +149,7 @@ export default function Team() {
 
       const { data, error } = await supabase
         .from("organization_invites")
-        .select("id, email, role, status, created_at, token")
+        .select("id, email, role, status, created_at")
         .eq("organization_id", currentOrganization.id)
         .order("created_at", { ascending: false });
 

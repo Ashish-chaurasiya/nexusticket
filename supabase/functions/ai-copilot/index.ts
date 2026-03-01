@@ -9,36 +9,7 @@ const corsHeaders = {
 
 type CopilotAction = "sprint_summary" | "project_analysis" | "team_insights" | "standup_prep";
 
-interface CopilotRequest {
-  action: CopilotAction;
-  organizationId: string;
-  projectId?: string;
-  sprintId?: string;
-  data?: {
-    tickets?: Array<{
-      key: string;
-      title: string;
-      status: string;
-      priority: string;
-      type: string;
-      assignee?: string;
-      createdAt: string;
-      updatedAt: string;
-    }>;
-    sprint?: {
-      name: string;
-      startDate: string;
-      endDate: string;
-      goal?: string;
-    };
-    recentActivity?: Array<{
-      action: string;
-      entityType: string;
-      user: string;
-      timestamp: string;
-    }>;
-  };
-}
+const VALID_ACTIONS: CopilotAction[] = ["sprint_summary", "project_analysis", "team_insights", "standup_prep"];
 
 const ACTION_PROMPTS: Record<CopilotAction, string> = {
   sprint_summary: `You are a Manager AI Copilot providing sprint summaries. Analyze the sprint data and provide:
@@ -138,48 +109,95 @@ serve(async (req) => {
   }
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    // Authenticate user
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    const { action, organizationId, projectId, sprintId, data }: CopilotRequest = await req.json();
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claims, error: claimsError } = await supabase.auth.getClaims(token);
+    if (claimsError || !claims?.claims) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      console.error("LOVABLE_API_KEY is not configured");
+      return new Response(
+        JSON.stringify({ error: "AI service is not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const body = await req.json();
+
+    // Input validation
+    const action = body.action;
+    if (!action || !VALID_ACTIONS.includes(action)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid action. Must be one of: " + VALID_ACTIONS.join(", ") }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!body.organizationId || typeof body.organizationId !== "string") {
+      return new Response(
+        JSON.stringify({ error: "organizationId is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const data = body.data;
 
     // Build context from provided data
     let dataContext = "";
     
     if (data?.sprint) {
       dataContext += `\n## Sprint Information
-Name: ${data.sprint.name}
-Period: ${data.sprint.startDate} to ${data.sprint.endDate}
-Goal: ${data.sprint.goal || "Not specified"}`;
+Name: ${String(data.sprint.name || "").substring(0, 200)}
+Period: ${String(data.sprint.startDate || "").substring(0, 20)} to ${String(data.sprint.endDate || "").substring(0, 20)}
+Goal: ${String(data.sprint.goal || "Not specified").substring(0, 500)}`;
     }
 
-    if (data?.tickets && data.tickets.length > 0) {
-      dataContext += `\n\n## Tickets (${data.tickets.length} total)`;
+    if (data?.tickets && Array.isArray(data.tickets) && data.tickets.length > 0) {
+      const tickets = data.tickets.slice(0, 100); // Limit to 100 tickets
+      dataContext += `\n\n## Tickets (${tickets.length} total)`;
       
-      // Group by status
-      const byStatus: Record<string, typeof data.tickets> = {};
-      data.tickets.forEach(t => {
-        if (!byStatus[t.status]) byStatus[t.status] = [];
-        byStatus[t.status].push(t);
+      const byStatus: Record<string, typeof tickets> = {};
+      tickets.forEach((t: { status?: string; key?: string; title?: string; priority?: string; type?: string; assignee?: string }) => {
+        const status = String(t.status || "unknown").substring(0, 50);
+        if (!byStatus[status]) byStatus[status] = [];
+        byStatus[status].push(t);
       });
 
-      Object.entries(byStatus).forEach(([status, tickets]) => {
-        dataContext += `\n\n### ${status.replace("_", " ").toUpperCase()} (${tickets.length})`;
-        tickets.slice(0, 10).forEach(t => {
-          dataContext += `\n- [${t.key}] ${t.title} (${t.priority}, ${t.type}${t.assignee ? `, assigned to ${t.assignee}` : ""})`;
+      Object.entries(byStatus).forEach(([status, statusTickets]) => {
+        dataContext += `\n\n### ${status.replace("_", " ").toUpperCase()} (${statusTickets.length})`;
+        statusTickets.slice(0, 10).forEach((t: { key?: string; title?: string; priority?: string; type?: string; assignee?: string }) => {
+          dataContext += `\n- [${String(t.key || "").substring(0, 20)}] ${String(t.title || "").substring(0, 200)} (${t.priority}, ${t.type}${t.assignee ? `, assigned to ${String(t.assignee).substring(0, 100)}` : ""})`;
         });
-        if (tickets.length > 10) {
-          dataContext += `\n- ... and ${tickets.length - 10} more`;
+        if (statusTickets.length > 10) {
+          dataContext += `\n- ... and ${statusTickets.length - 10} more`;
         }
       });
     }
 
-    if (data?.recentActivity && data.recentActivity.length > 0) {
+    if (data?.recentActivity && Array.isArray(data.recentActivity) && data.recentActivity.length > 0) {
       dataContext += `\n\n## Recent Activity`;
-      data.recentActivity.slice(0, 10).forEach(a => {
-        dataContext += `\n- ${a.user} ${a.action} ${a.entityType} (${a.timestamp})`;
+      data.recentActivity.slice(0, 10).forEach((a: { user?: string; action?: string; entityType?: string; timestamp?: string }) => {
+        dataContext += `\n- ${String(a.user || "").substring(0, 100)} ${String(a.action || "").substring(0, 100)} ${String(a.entityType || "").substring(0, 50)} (${String(a.timestamp || "").substring(0, 30)})`;
       });
     }
 
@@ -194,7 +212,7 @@ Goal: ${data.sprint.goal || "Not specified"}`;
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [
-          { role: "system", content: ACTION_PROMPTS[action] },
+          { role: "system", content: ACTION_PROMPTS[action as CopilotAction] },
           { role: "user", content: userMessage }
         ],
         stream: true
@@ -214,9 +232,11 @@ Goal: ${data.sprint.goal || "Not specified"}`;
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error(`AI gateway error: ${response.status}`);
+      console.error("AI gateway error:", response.status);
+      return new Response(
+        JSON.stringify({ error: "AI service temporarily unavailable" }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     return new Response(response.body, {
@@ -225,7 +245,7 @@ Goal: ${data.sprint.goal || "Not specified"}`;
   } catch (error) {
     console.error("AI copilot error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ error: "An unexpected error occurred" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
